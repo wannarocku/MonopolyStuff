@@ -2,9 +2,14 @@
 <#
 Monopoly IKEv2 VPN Tool
 Install / Remove / Diagnose Windows built-in IKEv2 EAP VPN profile.
-Can be run as: irm https://raw.githubusercontent.com/<org>/<repo>/main/ikev2_mono_tool.ps1 | iex
 
-Important: installation/removal require elevated PowerShell because CA is imported into LocalMachine\Root and VPN is created as AllUserConnection.
+Run from GitHub:
+irm https://raw.githubusercontent.com/wannarocku/MonopolyStuff/main/windows/ikev2_mono_tool.ps1 | iex
+
+Important:
+- Installation/removal require elevated PowerShell.
+- CA certificate is downloaded from:
+  https://raw.githubusercontent.com/wannarocku/MonopolyStuff/main/ca/ca.cer
 #>
 
 Set-StrictMode -Version 2.0
@@ -30,10 +35,8 @@ $Script:Config = [ordered]@{
     EncryptionLevel  = 'Required'
     SplitTunneling   = $true
     AllUser          = $true
+    CaCertUrl        = 'https://github.com/wannarocku/MonopolyStuff/raw/refs/heads/main/ca/ca.cer'
 }
-
-# Embedded ca.cer from the provided workflow.
-$Script:CaCertBase64 = 'LS0tLS1CRUdJTiBDRVJUSUZJQ0FURS0tLS0tDQpNSUlEbVRDQ0FvR2dBd0lCQWdJUWZ5M0RIZmx5dHBwRytoQStzSWRNYURBTkJna3Foa2lHOXcwQkFRc0ZBREJUDQpNUkl3RUFZS0NaSW1pWlB5TEdRQkdSWUNjM1V4R0RBV0Jnb0praWFKay9Jc1pBRVpGZ2h0YjI1dmNHOXNlVEVqDQpNQ0VHQTFVRUF4TWFiVzl1YjNCdmJIa3RRVVJOTFVOVFUxSldMVEF5TFVOQkxUSXdIaGNOTWpJd05qQXhNVFF5DQpPVFV3V2hjTk16SXdOakF4TVRRek9UVXdXakJUTVJJd0VBWUtDWkltaVpQeUxHUUJHUllDYzNVeEdEQVdCZ29KDQpraWFKay9Jc1pBRVpGZ2h0YjI1dmNHOXNlVEVqTUNFR0ExVUVBeE1hYlc5dWIzQnZiSGt0UVVSTkxVTlRVMUpXDQpMVEF5TFVOQkxUSXdnZ0VpTUEwR0NTcUdTSWIzRFFFQkFRVUFBNElCRHdBd2dnRUtBb0lCQVFESFo3alhaVis2DQorS0ptV3FSRENVYWxGODdlVzRYQzFCNFQ5NXBqelhoUXFVVi8zdmh0anFub1MxYk5kVjJ5VnFYeUNjOUlXM2daDQpIZlIzWGxrVXJGRE5tMmxiUEkrSm5XVFVNNk1mbmgxUlVJTDZPVGwyZEttVER3RFk2Ry9zK1krd0g1SE9iRTQ1DQpyVWZSVHFSQmxpbVBaY25YOU1PaEF1TDRlUndBQWNRK1BPeURtSUptUTI1QUdKS0ZzTHBvT2ZZSmpTNzdrVnFLDQo5UTVvTkYyeUduSy8rNWkraXlNdFJ1d2Nkc3ZPRzVPbHVvT2R2eEw3eGNCN1RrSHk1b1VuZFl0SHk3SmFqMGkyDQorV2pyMHJMSGM3c3Q4WDVsQkRNQXlpTVlBU2ZoQ0JQanpOU2VMWk9BWmxoMExxRXFDQUI5VHpvaFZMMGZoZTE4DQppWWRjbGswSkhKdEpBZ01CQUFHamFUQm5NQk1HQ1NzR0FRUUJnamNVQWdRR0hnUUFRd0JCTUE0R0ExVWREd0VCDQovd1FFQXdJQmhqQVBCZ05WSFJNQkFmOEVCVEFEQVFIL01CMEdBMVVkRGdRV0JCUTNFV3lhSE1oZllQSSt5UzRTDQppRTZwcmd3ZjJ6QVFCZ2tyQmdFRUFZSTNGUUVFQXdJQkFEQU5CZ2txaGtpRzl3MEJBUXNGQUFPQ0FRRUFSNmo5DQpSTVdpejhJK0V3YzNYVlg4V1BKWElOQ1p3RzRWSVpicUU2M0ZlWEdKdjB4eHVocVZpblJWR1BnU04wanZXTVdwDQpyUEp1RXZoajY5TTZodzlneWR0RUdiSHlDak5JSXlXM3V2VnZHR1RjZjFybkxPMFEwRzE2R0F3ZnFFZHloNnYyDQo4cVpXQklKUEZwNkxJNFMyRkp1SC9DWnlHK2VxN2NqaCs3MGp6RHFETGpJQnhYUWVQbGJqYTZ1YnlmVnpTMndyDQpTUzBCRmJqdWlPeTU0clg1UGladHVXZTRtNkZYN3Rmenk5NDJYY2IyeklaWFpNVlVVYlZ5RlU3eGp0SU1jN2ZmDQp6Nm84ZXJlU1h4ZFFMb0Z0SjNZRG8zT25Uc3Q1MlRpL0JXVzRSZTJwbDJRNkFScU45YXhzQXBXLyttallqelM4DQpLb3JTdk5zR0EvNVlxaCtCQXc9PQ0KLS0tLS1FTkQgQ0VSVElGSUNBVEUtLS0tLQ0K'
 
 $Script:AllUserPbk = Join-Path $env:ProgramData 'Microsoft\Network\Connections\Pbk\rasphone.pbk'
 $Script:UserPbk    = Join-Path $env:APPDATA     'Microsoft\Network\Connections\Pbk\rasphone.pbk'
@@ -101,6 +104,7 @@ function Export-Report {
     $lines.Add(('Computer: {0}' -f $env:COMPUTERNAME)) | Out-Null
     $lines.Add(('User: {0}\{1}' -f $env:USERDOMAIN,$env:USERNAME)) | Out-Null
     $lines.Add(('Server: {0}' -f $Script:Config.VpnServer)) | Out-Null
+    $lines.Add(('CA URL: {0}' -f $Script:Config.CaCertUrl)) | Out-Null
     $lines.Add(('AllUser PBK: {0}' -f $Script:AllUserPbk)) | Out-Null
     $lines.Add(('User PBK: {0}' -f $Script:UserPbk)) | Out-Null
     $lines.Add('') | Out-Null
@@ -219,19 +223,51 @@ function Remove-PbkSection {
 }
 
 # =========================
-# CA certificate
+# CA certificate from GitHub
 # =========================
-function Get-EmbeddedCaTempPath {
+function Get-CaCertPath {
     $dir = Join-Path $env:TEMP 'MonopolyVpnTool'
     New-Item -ItemType Directory -Path $dir -Force | Out-Null
-    $path = Join-Path $dir 'ca.cer'
-    [IO.File]::WriteAllBytes($path, [Convert]::FromBase64String($Script:CaCertBase64))
-    return $path
-}
 
-function Get-EmbeddedCaCert {
-    $path = Get-EmbeddedCaTempPath
-    return New-Object System.Security.Cryptography.X509Certificates.X509Certificate2($path)
+    $path = Join-Path $dir 'ca.cer'
+
+    try {
+        if (Test-Path $path) { Remove-Item $path -Force -ErrorAction SilentlyContinue }
+
+        Invoke-WebRequest `
+            -Uri $Script:Config.CaCertUrl `
+            -OutFile $path `
+            -UseBasicParsing `
+            -ErrorAction Stop
+
+        if (-not (Test-Path $path)) {
+            Add-Result FAIL 'CA certificate' 'CA не был скачан' $Script:Config.CaCertUrl
+            return $null
+        }
+
+        $fileInfo = Get-Item $path -ErrorAction Stop
+        if ($fileInfo.Length -lt 500) {
+            Add-Result FAIL 'CA certificate' 'Скачанный CA выглядит подозрительно маленьким' ("Path=$path; Size=$($fileInfo.Length) bytes")
+            return $null
+        }
+
+        try {
+            $cert = New-Object System.Security.Cryptography.X509Certificates.X509Certificate2($path)
+            if (-not $cert.Thumbprint) {
+                Add-Result FAIL 'CA certificate' 'Скачанный файл не похож на корректный сертификат' $path
+                return $null
+            }
+        } catch {
+            Add-Result FAIL 'CA certificate' 'Скачанный файл не удалось открыть как сертификат' ("URL=$($Script:Config.CaCertUrl); Error=$($_.Exception.Message)")
+            return $null
+        }
+
+        Add-Result OK 'CA download' 'CA скачан с GitHub' ("$($Script:Config.CaCertUrl); Thumbprint=$($cert.Thumbprint)")
+        return $path
+    } catch {
+        Add-Result FAIL 'CA certificate' 'Не удалось скачать CA с GitHub' ("URL=$($Script:Config.CaCertUrl); Error=$($_.Exception.Message)")
+        return $null
+    }
 }
 
 function Install-CaCertificate {
@@ -239,16 +275,20 @@ function Install-CaCertificate {
         Add-Result FAIL 'CA certificate' 'Для установки CA нужен запуск PowerShell от администратора' ''
         return $false
     }
+
+    $path = Get-CaCertPath
+    if (-not $path) { return $false }
+
     try {
-        $path = Get-EmbeddedCaTempPath
         $cert = New-Object System.Security.Cryptography.X509Certificates.X509Certificate2($path)
         $thumb = $cert.Thumbprint
         $existing = Get-ChildItem Cert:\LocalMachine\Root | Where-Object { $_.Thumbprint -eq $thumb }
+
         if ($existing) {
-            Add-Result OK 'CA certificate' 'CA уже установлен в LocalMachine\Root' ("Thumbprint: $thumb")
+            Add-Result OK 'CA certificate' 'CA уже установлен в LocalMachine\Root' ("Subject: $($cert.Subject); Thumbprint: $thumb")
         } else {
             Import-Certificate -FilePath $path -CertStoreLocation Cert:\LocalMachine\Root | Out-Null
-            Add-Result OK 'CA certificate' 'CA импортирован в LocalMachine\Root' ("Thumbprint: $thumb")
+            Add-Result OK 'CA certificate' 'CA импортирован в LocalMachine\Root' ("Subject: $($cert.Subject); Thumbprint: $thumb")
         }
         return $true
     } catch {
@@ -258,14 +298,18 @@ function Install-CaCertificate {
 }
 
 function Test-CaCertificate {
+    $path = Get-CaCertPath
+    if (-not $path) { return }
+
     try {
-        $cert = Get-EmbeddedCaCert
+        $cert = New-Object System.Security.Cryptography.X509Certificates.X509Certificate2($path)
         $thumb = $cert.Thumbprint
         $existing = Get-ChildItem Cert:\LocalMachine\Root -ErrorAction Stop | Where-Object { $_.Thumbprint -eq $thumb }
+
         if ($existing) {
             Add-Result OK 'CA certificate' 'Нужный CA найден в LocalMachine\Root' ("Subject: $($cert.Subject); Thumbprint: $thumb")
         } else {
-            Add-Result FAIL 'CA certificate' 'Нужный CA не найден в LocalMachine\Root' ("Thumbprint expected: $thumb")
+            Add-Result FAIL 'CA certificate' 'Нужный CA не найден в LocalMachine\Root' ("Subject: $($cert.Subject); Thumbprint expected: $thumb")
         }
     } catch {
         Add-Result WARN 'CA certificate' 'Не удалось проверить CA' $_.Exception.Message
@@ -439,11 +483,9 @@ function Test-LoginBestEffort {
 
 function Test-DnsAndNetwork {
     $server = $Script:Config.VpnServer
-    $ip = $null
     try {
         $records = Resolve-DnsName -Name $server -ErrorAction Stop | Where-Object { $_.IPAddress } | Select-Object -First 5
         if ($records) {
-            $ip = [string]$records[0].IPAddress
             Add-Result OK 'DNS' ("$server -> $($records.IPAddress -join ', ')") ''
         } else {
             Add-Result FAIL 'DNS' "Имя $server не вернуло IP адрес" ''
@@ -638,6 +680,7 @@ function Show-Header {
     Write-Host '=============================================' -ForegroundColor Cyan
     Write-Host ("Server : {0}" -f $Script:Config.VpnServer)
     Write-Host ("Default profile name : {0}" -f $Script:Config.VpnName)
+    Write-Host ("CA URL : {0}" -f $Script:Config.CaCertUrl)
     Write-Host ("Admin : {0}" -f ($(if (Test-IsAdmin) {'YES'} else {'NO'})))
     Write-Host ''
 }

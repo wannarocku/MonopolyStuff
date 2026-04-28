@@ -4,7 +4,7 @@ Monopoly IKEv2 VPN Tool
 Install / Remove / Diagnose Windows built-in IKEv2 EAP VPN profile.
 
 Run from GitHub:
-irm https://raw.githubusercontent.com/wannarocku/MonopolyStuff/main/windows/ikev2_mono_tool.ps1 | iex
+[Net.ServicePointManager]::SecurityProtocol=[Net.SecurityProtocolType]::Tls12; irm https://raw.githubusercontent.com/wannarocku/MonopolyStuff/main/windows/ikev2_mono_tool.ps1 | iex
 
 Important:
 - Installation/removal require elevated PowerShell.
@@ -35,7 +35,7 @@ $Script:Config = [ordered]@{
     EncryptionLevel  = 'Required'
     SplitTunneling   = $true
     AllUser          = $true
-    CaCertUrl        = 'https://github.com/wannarocku/MonopolyStuff/raw/refs/heads/main/ca/ca.cer'
+    CaCertUrl        = 'https://raw.githubusercontent.com/wannarocku/MonopolyStuff/main/ca/ca.cer'
 }
 
 $Script:AllUserPbk = Join-Path $env:ProgramData 'Microsoft\Network\Connections\Pbk\rasphone.pbk'
@@ -79,6 +79,18 @@ function Add-Result {
 }
 
 function Clear-Results { $Script:Results.Clear() }
+
+function As-Array {
+    param($Value)
+    if ($null -eq $Value) { return @() }
+    return @($Value)
+}
+
+function Add-Section {
+    param([string]$Title)
+    Write-Host ''
+    Write-Host ('=== {0} ===' -f $Title) -ForegroundColor Magenta
+}
 
 function Show-Summary {
     $fail = @($Script:Results | Where-Object Status -eq 'FAIL').Count
@@ -321,6 +333,7 @@ function Test-CaCertificate {
 # =========================
 function Install-CorpVpn {
     Clear-Results
+    Add-Section 'Установка VPN'
     Add-Result INFO 'Install' 'Начинаю установку VPN' ("Name=$($Script:Config.VpnName); Server=$($Script:Config.VpnServer)")
 
     if (-not (Test-IsAdmin)) {
@@ -332,7 +345,7 @@ function Install-CorpVpn {
 
     [void](Install-CaCertificate)
 
-    $existing = Find-CorpVpnProfiles
+    $existing = As-Array (Find-CorpVpnProfiles)
     if ($existing.Count -gt 0) {
         Add-Result WARN 'Existing profile' ("Найдено профилей для $($Script:Config.VpnServer): $($existing.Count)") (($existing | ForEach-Object { "$($_.Name) [$($_.PbkPath)]" }) -join '; ')
         $answer = Read-Host 'Удалить найденные профили перед установкой? [Y/N]'
@@ -379,7 +392,16 @@ function Install-CorpVpn {
     }
 
     Add-Result INFO 'Credentials' 'При первом подключении введите логин в формате user@monopoly.su' 'Пароль будет сохранён Windows, если включено RememberCredential.'
-    Run-Diagnostics -NoClear
+    Run-Diagnostics -NoClear -NoExport
+
+    Write-Host ''
+    Write-Host '=====================================================================' -ForegroundColor Yellow
+    Write-Host ' ВАЖНО: после установки VPN рекомендуется ПЕРЕЗАГРУЗИТЬ компьютер.' -ForegroundColor Yellow
+    Write-Host ' После перезагрузки подключитесь к VPN и введите логин в формате user@monopoly.su.' -ForegroundColor Yellow
+    Write-Host '=====================================================================' -ForegroundColor Yellow
+    Write-Host ''
+
+    Add-Result WARN 'Reboot required' 'После установки VPN рекомендуется перезагрузить ПК' 'Это помогает Windows корректно применить VPN/EAP/IPsec настройки и службы.'
     Export-Report -Prefix 'VPN_IKEv2_Install'
 }
 
@@ -418,7 +440,7 @@ function Remove-CorpVpn {
         Export-Report -Prefix 'VPN_IKEv2_Remove'
         return
     }
-    $profiles = Find-CorpVpnProfiles
+    $profiles = As-Array (Find-CorpVpnProfiles)
     if ($profiles.Count -eq 0) {
         Add-Result WARN 'Remove' 'Профили для корпоративного VPN не найдены' $Script:Config.VpnServer
         Show-Summary
@@ -531,7 +553,18 @@ function Test-Services {
             if ($s.Status -eq 'Running') {
                 Add-Result OK $svc.Display "Служба запущена ($($s.Status))" ''
             } else {
-                Add-Result FAIL $svc.Display "Служба не запущена ($($s.Status))" 'Для IKEv2/IPsec эта служба нужна.'
+                try {
+                    Start-Service -Name $svc.Name -ErrorAction Stop
+                    Start-Sleep -Milliseconds 700
+                    $s2 = Get-Service -Name $svc.Name -ErrorAction Stop
+                    if ($s2.Status -eq 'Running') {
+                        Add-Result OK $svc.Display "Служба была остановлена, но успешно запущена ($($s2.Status))" 'Скрипт автоматически запустил службу.'
+                    } else {
+                        Add-Result FAIL $svc.Display "Служба не запущена ($($s2.Status))" 'Для IKEv2/IPsec эта служба нужна.'
+                    }
+                } catch {
+                    Add-Result FAIL $svc.Display "Служба не запущена ($($s.Status)); автоматический запуск не удался" $_.Exception.Message
+                }
             }
         } catch {
             Add-Result FAIL $svc.Display 'Служба не найдена или недоступна' $_.Exception.Message
@@ -582,11 +615,12 @@ function Read-IkeHints {
 }
 
 function Run-Diagnostics {
-    param([switch]$NoClear)
+    param([switch]$NoClear, [switch]$NoExport)
     if (-not $NoClear) { Clear-Results }
-    Add-Result INFO 'Start' 'Диагностика VPN по PhoneNumber, а не по имени профиля' $Script:Config.VpnServer
+    Add-Section 'Диагностика'
+    Add-Result INFO 'Start' 'Диагностика VPN по серверу подключения, а не по имени профиля' $Script:Config.VpnServer
 
-    $profiles = Find-CorpVpnProfiles
+    $profiles = As-Array (Find-CorpVpnProfiles)
     if ($profiles.Count -eq 0) {
         Add-Result FAIL 'VPN profile' 'VPN профиль для корпоративного сервера не найден' "Искал PhoneNumber=$($Script:Config.VpnServer) в $($Script:AllUserPbk) и $($Script:UserPbk)"
     } elseif ($profiles.Count -gt 1) {
@@ -596,6 +630,7 @@ function Run-Diagnostics {
     }
 
     if ($profiles.Count -gt 0) {
+        Add-Section 'Проверка профиля rasphone.pbk'
         foreach ($profile in $profiles) {
             $s = $profile.Settings
             Add-Result INFO 'Profile details' "Проверяю профиль: $($profile.Name)" $profile.PbkPath
@@ -616,13 +651,18 @@ function Run-Diagnostics {
         }
     }
 
+    Add-Section 'CA сертификат'
     Test-CaCertificate
+    Add-Section 'DNS и сеть'
     Test-DnsAndNetwork
+    Add-Section 'Службы Windows'
     Test-Services
+    Add-Section 'Журналы Windows'
     Read-RasClientLog
     Read-IkeHints
+    Add-Section 'Итог'
     Show-Summary
-    Export-Report -Prefix 'VPN_IKEv2_Diagnostic'
+    if (-not $NoExport) { Export-Report -Prefix 'VPN_IKEv2_Diagnostic' }
 }
 
 # =========================
@@ -642,7 +682,7 @@ function Get-RasdialErrorHint {
 
 function Test-VpnConnectionRasdial {
     Clear-Results
-    $profiles = Find-CorpVpnProfiles
+    $profiles = As-Array (Find-CorpVpnProfiles)
     if ($profiles.Count -eq 0) {
         Add-Result FAIL 'rasdial' 'Не найден VPN профиль для теста подключения' $Script:Config.VpnServer
         Show-Summary
@@ -664,8 +704,10 @@ function Test-VpnConnectionRasdial {
     } else {
         Add-Result FAIL 'rasdial' "VPN подключение завершилось ошибкой. $hint" $res.Output
     }
+    Add-Section 'Журналы Windows'
     Read-RasClientLog
     Read-IkeHints
+    Add-Section 'Итог'
     Show-Summary
     Export-Report -Prefix 'VPN_IKEv2_ConnectTest'
 }

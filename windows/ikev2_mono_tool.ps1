@@ -1,6 +1,6 @@
 #requires -Version 5.1
 <#
-Monopoly IKEv2 VPN Tool v1.7
+Monopoly IKEv2 VPN Tool v1.8
 Install / Remove / Diagnose Windows built-in IKEv2 EAP VPN profile.
 
 Run from GitHub:
@@ -41,6 +41,7 @@ $Script:Config = [ordered]@{
 $Script:AllUserPbk = Join-Path $env:ProgramData 'Microsoft\Network\Connections\Pbk\rasphone.pbk'
 $Script:UserPbk    = Join-Path $env:APPDATA     'Microsoft\Network\Connections\Pbk\rasphone.pbk'
 $Script:Results = New-Object System.Collections.Generic.List[object]
+$Script:FixQueue = New-Object System.Collections.Generic.List[object]
 $Script:LastReportPath = $null
 
 # =========================
@@ -78,7 +79,7 @@ function Add-Result {
     if ($Details) { Write-Host ("      {0}" -f $Details) -ForegroundColor DarkGray }
 }
 
-function Clear-Results { $Script:Results.Clear() }
+function Clear-Results { $Script:Results.Clear(); $Script:FixQueue.Clear() }
 
 function As-Array {
     param($Value)
@@ -471,10 +472,15 @@ function Test-PbkValue {
         [hashtable]$Settings,
         [string]$Key,
         [string]$Expected,
-        [ValidateSet('FAIL','WARN')][string]$Severity = 'FAIL'
+        [ValidateSet('FAIL','WARN')][string]$Severity = 'FAIL',
+        [string]$ProfileName = '',
+        [string]$PbkPath = ''
     )
     if (-not $Settings.ContainsKey($Key)) {
         Add-Result $Severity "PBK:$Key" "Параметр отсутствует, ожидается '$Expected'" ''
+        if ($Severity -eq 'FAIL') {
+            $Script:FixQueue.Add([pscustomobject]@{ ProfileName=$ProfileName; PbkPath=$PbkPath; Key=$Key; Expected=$Expected; Actual='<missing>' }) | Out-Null
+        }
         return
     }
     $actual = [string]$Settings[$Key]
@@ -482,7 +488,116 @@ function Test-PbkValue {
         Add-Result OK "PBK:$Key" "$Key = $actual" ''
     } else {
         Add-Result $Severity "PBK:$Key" "$Key = '$actual', ожидалось '$Expected'" ''
+        if ($Severity -eq 'FAIL') {
+            $Script:FixQueue.Add([pscustomobject]@{ ProfileName=$ProfileName; PbkPath=$PbkPath; Key=$Key; Expected=$Expected; Actual=$actual }) | Out-Null
+        }
     }
+}
+
+function Repair-PbkProfile {
+    param(
+        [Parameter(Mandatory)][string]$Path,
+        [Parameter(Mandatory)][string]$SectionName,
+        [Parameter(Mandatory)]$Fixes
+    )
+
+    if (-not (Test-Path $Path)) {
+        Add-Result FAIL 'Auto-fix' 'Не найден rasphone.pbk для исправления' $Path
+        return $false
+    }
+    if ($Path -ieq $Script:AllUserPbk -and -not (Test-IsAdmin)) {
+        Add-Result FAIL 'Auto-fix' 'Для исправления AllUser VPN нужен запуск PowerShell от администратора' $Path
+        return $false
+    }
+
+    try {
+        $backup = $Path + '.bak_' + (Get-Date -Format 'yyyyMMdd_HHmmss')
+        Copy-Item -Path $Path -Destination $backup -Force
+        Add-Result OK 'Auto-fix backup' 'Создана резервная копия rasphone.pbk' $backup
+
+        $lines = Get-Content -Path $Path -Encoding Default
+        $out = New-Object System.Collections.Generic.List[string]
+        $inside = $false
+        $seenKeys = @{}
+        $fixedCount = 0
+
+        foreach ($line in $lines) {
+            if ($line -match '^\[(.+)\]\s*$') {
+                if ($inside) {
+                    foreach ($fix in $Fixes) {
+                        if (-not $seenKeys.ContainsKey($fix.Key)) {
+                            $out.Add(("{0}={1}" -f $fix.Key, $fix.Expected)) | Out-Null
+                            $fixedCount++
+                            Add-Result OK 'Auto-fix' ("Добавлен параметр {0}={1}" -f $fix.Key,$fix.Expected) ''
+                        }
+                    }
+                }
+                $inside = ($matches[1] -eq $SectionName)
+                if ($inside) { $seenKeys = @{} }
+                $out.Add($line) | Out-Null
+                continue
+            }
+
+            if ($inside -and $line -match '^([^=]+)=(.*)$') {
+                $key = $matches[1].Trim()
+                $fix = @($Fixes | Where-Object { $_.Key -eq $key }) | Select-Object -First 1
+                if ($fix) {
+                    $newLine = "{0}={1}" -f $key, $fix.Expected
+                    $out.Add($newLine) | Out-Null
+                    if ($line -ne $newLine) {
+                        $fixedCount++
+                        Add-Result OK 'Auto-fix' ("Исправлено {0}: '{1}' -> '{2}'" -f $key,$fix.Actual,$fix.Expected) ''
+                    }
+                    $seenKeys[$key] = $true
+                    continue
+                }
+            }
+            $out.Add($line) | Out-Null
+        }
+
+        if ($inside) {
+            foreach ($fix in $Fixes) {
+                if (-not $seenKeys.ContainsKey($fix.Key)) {
+                    $out.Add(("{0}={1}" -f $fix.Key, $fix.Expected)) | Out-Null
+                    $fixedCount++
+                    Add-Result OK 'Auto-fix' ("Добавлен параметр {0}={1}" -f $fix.Key,$fix.Expected) ''
+                }
+            }
+        }
+
+        $out | Set-Content -Path $Path -Encoding Default
+        Add-Result OK 'Auto-fix' "Профиль '$SectionName' исправлен" "Изменено параметров: $fixedCount"
+        return $true
+    } catch {
+        Add-Result FAIL 'Auto-fix' 'Не удалось исправить rasphone.pbk' $_.Exception.Message
+        return $false
+    }
+}
+
+function Invoke-AutoFixIfNeeded {
+    if ($Script:FixQueue.Count -eq 0) { return }
+
+    Add-Section 'Автоисправление'
+    Write-Host 'Обнаружены исправимые несоответствия в VPN-профиле:' -ForegroundColor Yellow
+    $Script:FixQueue | ForEach-Object {
+        Write-Host (" - {0}: сейчас '{1}', нужно '{2}'" -f $_.Key,$_.Actual,$_.Expected) -ForegroundColor Yellow
+    }
+
+    $answer = Read-Host 'Попробовать автоматически исправить VPN-профиль? [Y/N]'
+    if ($answer -notmatch '^(Y|y|Д|д)$') {
+        Add-Result WARN 'Auto-fix' 'Автоисправление пропущено пользователем' ''
+        return
+    }
+
+    $groups = $Script:FixQueue | Group-Object PbkPath, ProfileName
+    foreach ($g in $groups) {
+        $first = $g.Group | Select-Object -First 1
+        [void](Repair-PbkProfile -Path $first.PbkPath -SectionName $first.ProfileName -Fixes $g.Group)
+    }
+
+    Write-Host ''
+    Write-Host 'После исправления рекомендуется выполнить диагностику ещё раз.' -ForegroundColor Yellow
+    Write-Host 'Если VPN был открыт в настройках Windows, закройте окно настроек и откройте заново.' -ForegroundColor Yellow
 }
 
 function Test-DnsAndNetwork {
@@ -616,21 +731,21 @@ function Run-Diagnostics {
         foreach ($profile in $profiles) {
             $s = $profile.Settings
             Add-Result INFO 'Profile details' "Проверяю профиль: $($profile.Name)" $profile.PbkPath
-            Test-PbkValue $s 'PhoneNumber' $Script:Config.VpnServer
-            Test-PbkValue $s 'VpnStrategy' '7'
-            Test-PbkValue $s 'DataEncryption' '256'
-            Test-PbkValue $s 'CustomAuthKey' '26'
-            Test-PbkValue $s 'AuthRestrictions' '128'
-            Test-PbkValue $s 'IpDnsSuffix' $Script:Config.DnsSuffix
-            Test-PbkValue $s 'IpPrioritizeRemote' '0'
-            Test-PbkValue $s 'PreferredDevice' 'WAN Miniport (IKEv2)'
-            Test-PbkValue $s 'PreferredPort' 'VPN2-0'
-            Test-PbkValue $s 'Port' 'VPN2-0'
-            Test-PbkValue $s 'Device' 'vpn'
-            Test-PbkValue $s 'CacheCredentials' '1' 'WARN'
-            Test-PbkValue $s 'UseRasCredentials' '1' 'WARN'
-            Test-PbkValue $s 'IpNameAssign' '1' 'WARN'
-            Test-PbkValue $s 'Ipv6NameAssign' '1' 'WARN'
+            Test-PbkValue $s 'PhoneNumber' $Script:Config.VpnServer -ProfileName $profile.Name -PbkPath $profile.PbkPath
+            Test-PbkValue $s 'VpnStrategy' '7' -ProfileName $profile.Name -PbkPath $profile.PbkPath
+            Test-PbkValue $s 'DataEncryption' '256' -ProfileName $profile.Name -PbkPath $profile.PbkPath
+            Test-PbkValue $s 'CustomAuthKey' '26' -ProfileName $profile.Name -PbkPath $profile.PbkPath
+            Test-PbkValue $s 'AuthRestrictions' '128' -ProfileName $profile.Name -PbkPath $profile.PbkPath
+            Test-PbkValue $s 'IpDnsSuffix' $Script:Config.DnsSuffix -ProfileName $profile.Name -PbkPath $profile.PbkPath
+            Test-PbkValue $s 'IpPrioritizeRemote' '0' -ProfileName $profile.Name -PbkPath $profile.PbkPath
+            Test-PbkValue $s 'PreferredDevice' 'WAN Miniport (IKEv2)' -ProfileName $profile.Name -PbkPath $profile.PbkPath
+            Test-PbkValue $s 'PreferredPort' 'VPN2-0' -ProfileName $profile.Name -PbkPath $profile.PbkPath
+            Test-PbkValue $s 'Port' 'VPN2-0' -ProfileName $profile.Name -PbkPath $profile.PbkPath
+            Test-PbkValue $s 'Device' 'vpn' -ProfileName $profile.Name -PbkPath $profile.PbkPath
+            Test-PbkValue $s 'CacheCredentials' '1' 'WARN' -ProfileName $profile.Name -PbkPath $profile.PbkPath
+            Test-PbkValue $s 'UseRasCredentials' '1' 'WARN' -ProfileName $profile.Name -PbkPath $profile.PbkPath
+            Test-PbkValue $s 'IpNameAssign' '1' 'WARN' -ProfileName $profile.Name -PbkPath $profile.PbkPath
+            Test-PbkValue $s 'Ipv6NameAssign' '1' 'WARN' -ProfileName $profile.Name -PbkPath $profile.PbkPath
             Add-Result INFO 'Login' 'Логин не проверяется автоматически' 'При первом подключении пользователь должен ввести логин в формате user@monopoly.su. Windows хранит credentials отдельно от rasphone.pbk.'
         }
     }
@@ -644,6 +759,7 @@ function Run-Diagnostics {
     Add-Section 'Журналы Windows'
     Read-RasClientLog
     Read-IkeHints
+    Invoke-AutoFixIfNeeded
     Add-Section 'Итог'
     Show-Summary
     if (-not $NoExport) { Export-Report -Prefix 'VPN_IKEv2_Diagnostic' }

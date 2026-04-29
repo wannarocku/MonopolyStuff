@@ -1,6 +1,6 @@
 #requires -Version 5.1
 <#
-Monopoly IKEv2 VPN Tool v1.4
+Monopoly IKEv2 VPN Tool v1.5
 Install / Remove / Diagnose Windows built-in IKEv2 EAP VPN profile.
 
 Run from GitHub:
@@ -160,7 +160,7 @@ function Invoke-NativeProcess {
     return [pscustomobject]@{ ExitCode = $p.ExitCode; Output = (($out + "`r`n" + $err).Trim()) }
 }
 
-function Pause-Menu { Write-Host ''; Read-Host 'Нажмите Enter для продолжения' | Out-Null }
+function Pause-Menu { Write-Host ''; Read-Host 'Нажмите Enter для возвращения в меню' | Out-Null }
 
 # =========================
 # PBK parsing
@@ -447,14 +447,12 @@ function Remove-CorpVpn {
     if (-not (Test-IsAdmin)) {
         Add-Result FAIL 'Admin rights' 'Удаление лучше запускать из PowerShell от администратора' 'AllUserConnection профиль находится в ProgramData.'
         Show-Summary
-        Export-Report -Prefix 'VPN_IKEv2_Remove'
         return
     }
     $profiles = @(Find-CorpVpnProfiles)
     if ($profiles.Count -eq 0) {
         Add-Result WARN 'Remove' 'Профили для корпоративного VPN не найдены' $Script:Config.VpnServer
         Show-Summary
-        Export-Report -Prefix 'VPN_IKEv2_Remove'
         return
     }
 
@@ -468,7 +466,6 @@ function Remove-CorpVpn {
     }
     foreach ($p in $profiles) { Remove-CorpVpnProfileObject -Profile $p }
     Show-Summary
-    Export-Report -Prefix 'VPN_IKEv2_Remove'
 }
 
 # =========================
@@ -678,53 +675,6 @@ function Run-Diagnostics {
 }
 
 # =========================
-# Test connection
-# =========================
-function Get-RasdialErrorHint {
-    param([string]$Text, [int]$ExitCode)
-    $combined = "$ExitCode`n$Text"
-    if ($combined -match '\b691\b') { return '691: ошибка логина/пароля или EAP-аутентификации. Проверьте формат user@monopoly.su и пароль.' }
-    if ($combined -match '\b809\b') { return '809: VPN сервер недоступен на уровне IKEv2/IPsec. Часто UDP 500/4500, NAT/CGNAT, firewall или провайдер.' }
-    if ($combined -match '\b812\b') { return '812: подключение запрещено политикой NPS/RRAS. Проверить права пользователя/группы и NPS policy.' }
-    if ($combined -match '\b868\b') { return '868: не удалось разрешить имя сервера. Проверить DNS.' }
-    if ($combined -match '13801') { return '13801: проблема доверия сертификату сервера/CA или EKU/имени сертификата.' }
-    if ($ExitCode -eq 0) { return 'Подключение успешно.' }
-    return 'Код не распознан. Смотрите полный вывод rasdial и RasClient events в отчёте.'
-}
-
-function Test-VpnConnectionRasdial {
-    Clear-Results
-    $profiles = @(Find-CorpVpnProfiles)
-    if ($profiles.Count -eq 0) {
-        Add-Result FAIL 'rasdial' 'Не найден VPN профиль для теста подключения' $Script:Config.VpnServer
-        Show-Summary
-        Export-Report -Prefix 'VPN_IKEv2_ConnectTest'
-        return
-    }
-    if ($profiles.Count -gt 1) {
-        Add-Result WARN 'rasdial' 'Найдено несколько профилей, будет использован первый' (($profiles | ForEach-Object { $_.Name }) -join ', ')
-    }
-    $name = $profiles[0].Name
-    Add-Result INFO 'rasdial' "Пробую подключить VPN профиль: $name" 'Если credentials не сохранены, Windows/rasdial может запросить или вернуть ошибку.'
-    $res = Invoke-NativeProcess -FileName 'rasdial.exe' -Arguments ('"{0}"' -f $name) -TimeoutSeconds 90
-    $hint = Get-RasdialErrorHint -Text $res.Output -ExitCode $res.ExitCode
-    if ($res.ExitCode -eq 0) {
-        Add-Result OK 'rasdial' 'VPN подключение успешно установлено' $res.Output
-        Start-Sleep -Seconds 2
-        $disc = Invoke-NativeProcess -FileName 'rasdial.exe' -Arguments ('"{0}" /disconnect' -f $name) -TimeoutSeconds 30
-        Add-Result INFO 'rasdial disconnect' 'VPN отключен после теста' $disc.Output
-    } else {
-        Add-Result FAIL 'rasdial' "VPN подключение завершилось ошибкой. $hint" $res.Output
-    }
-    Add-Section 'Журналы Windows'
-    Read-RasClientLog
-    Read-IkeHints
-    Add-Section 'Итог'
-    Show-Summary
-    Export-Report -Prefix 'VPN_IKEv2_ConnectTest'
-}
-
-# =========================
 # Menu
 # =========================
 function Show-Header {
@@ -745,8 +695,7 @@ function Show-Menu {
         Write-Host '1. Установить VPN / обновить профиль'
         Write-Host '2. Удалить VPN профили для privet1.monopoly.su'
         Write-Host '3. Диагностика'
-        Write-Host '4. Тест подключения rasdial'
-        Write-Host '5. Открыть папку с последним отчётом'
+        Write-Host '4. Открыть папку с последним отчётом'
         Write-Host '0. Выход'
         Write-Host ''
         $choice = Read-Host 'Выберите пункт'
@@ -754,8 +703,7 @@ function Show-Menu {
             '1' { Install-CorpVpn; Pause-Menu }
             '2' { Remove-CorpVpn; Pause-Menu }
             '3' { Run-Diagnostics; Pause-Menu }
-            '4' { Test-VpnConnectionRasdial; Pause-Menu }
-            '5' {
+            '4' {
                 if ($Script:LastReportPath -and (Test-Path $Script:LastReportPath)) {
                     Start-Process explorer.exe -ArgumentList ('/select,"{0}"' -f $Script:LastReportPath)
                 } else {

@@ -1,6 +1,6 @@
 #requires -Version 5.1
 <#
-Monopoly IKEv2 VPN Tool v2.0
+Monopoly IKEv2 VPN Tool v2.1
 Install / Remove / Diagnose Windows built-in IKEv2 EAP VPN profile.
 
 Run from GitHub:
@@ -100,7 +100,7 @@ function Show-Summary {
     $warn = @($Script:Results | Where-Object Status -eq 'WARN').Count
 
     if ($Script:AutoFixApplied) {
-        Add-Result WARN 'Summary' 'Найдены проблемы, автоисправление выполнено' 'Старые FAIL относятся к состоянию до исправления. Запустите диагностику ещё раз для подтверждения результата.'
+        Add-Result WARN 'Summary' 'Найдены проблемы, автоисправление выполнено' 'Запустите диагностику ещё раз для подтверждения результата.'
         return
     }
 
@@ -117,10 +117,11 @@ function Export-Report {
     param([string]$Prefix = 'VPN_IKEv2_Diagnostic')
     $desktop = [Environment]::GetFolderPath('Desktop')
     if (-not $desktop) { $desktop = $PWD.Path }
-    $path = Join-Path $desktop ("{0}_{1}.txt" -f $Prefix, (Get-Date -Format 'yyyyMMdd_HHmmss'))
+    $path = Join-Path $desktop "Monopoly_VPN_Diagnostic.txt"
 
     $lines = New-Object System.Collections.Generic.List[string]
     $lines.Add('Monopoly IKEv2 VPN diagnostic report') | Out-Null
+    $lines.Add('IMPORTANT: this is the latest diagnostic report. The file is overwritten on every diagnostics run.') | Out-Null
     $lines.Add(('Generated: {0}' -f (Get-Date))) | Out-Null
     $lines.Add(('Computer: {0}' -f $env:COMPUTERNAME)) | Out-Null
     $lines.Add(('User: {0}\{1}' -f $env:USERDOMAIN,$env:USERNAME)) | Out-Null

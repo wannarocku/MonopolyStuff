@@ -830,8 +830,8 @@ function Show-Header {
 function Show-Menu {
     while ($true) {
         Show-Header
-        Write-Host '1. Установить VPN / обновить профиль'
-        Write-Host '2. Удалить VPN профили для privet1.monopoly.su'
+        Write-Host '1. Установить VPN'
+        Write-Host '2. Удалить VPN'
         Write-Host '3. Диагностика'
         Write-Host '4. Открыть папку с диагностическим отчётом'
         Write-Host '0. Выход'

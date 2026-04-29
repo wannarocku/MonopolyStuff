@@ -1,6 +1,6 @@
 #requires -Version 5.1
 <#
-Monopoly IKEv2 VPN Tool
+Monopoly IKEv2 VPN Tool v1.3
 Install / Remove / Diagnose Windows built-in IKEv2 EAP VPN profile.
 
 Run from GitHub:
@@ -345,14 +345,24 @@ function Install-CorpVpn {
 
     [void](Install-CaCertificate)
 
-    $existing = As-Array (Find-CorpVpnProfiles)
+    $existing = @(Find-CorpVpnProfiles)
     if ($existing.Count -gt 0) {
-        Add-Result WARN 'Existing profile' ("Найдено профилей для $($Script:Config.VpnServer): $($existing.Count)") (($existing | ForEach-Object { "$($_.Name) [$($_.PbkPath)]" }) -join '; ')
-        $answer = Read-Host 'Удалить найденные профили перед установкой? [Y/N]'
-        if ($answer -match '^(Y|y|Д|д)$') {
+        Add-Result WARN 'Existing profile' ("VPN для $($Script:Config.VpnServer) уже существует: $($existing.Count)") (($existing | ForEach-Object { "$($_.Name) [$($_.PbkPath)]" }) -join '; ')
+        Write-Host ''
+        Write-Host 'Найден уже установленный VPN-профиль для этого сервера.' -ForegroundColor Yellow
+        Write-Host '1. Удалить найденный профиль и установить заново'
+        Write-Host '2. Не удалять, только выполнить диагностику'
+        Write-Host '0. Отмена'
+        $existingChoice = Read-Host 'Выберите действие'
+        if ($existingChoice -eq '1') {
             foreach ($p in $existing) { Remove-CorpVpnProfileObject -Profile $p }
+        } elseif ($existingChoice -eq '2') {
+            Add-Result INFO 'Install' 'Установка пропущена: профиль уже существует, выполняю диагностику' ''
+            Run-Diagnostics -NoClear -NoExport
+            Export-Report -Prefix 'VPN_IKEv2_Install'
+            return
         } else {
-            Add-Result FAIL 'Install' 'Установка отменена, потому что профиль для этого сервера уже существует' 'Удалите старый профиль или выберите удаление в меню.'
+            Add-Result WARN 'Install' 'Установка отменена пользователем' ''
             Show-Summary
             Export-Report -Prefix 'VPN_IKEv2_Install'
             return
@@ -440,7 +450,7 @@ function Remove-CorpVpn {
         Export-Report -Prefix 'VPN_IKEv2_Remove'
         return
     }
-    $profiles = As-Array (Find-CorpVpnProfiles)
+    $profiles = @(Find-CorpVpnProfiles)
     if ($profiles.Count -eq 0) {
         Add-Result WARN 'Remove' 'Профили для корпоративного VPN не найдены' $Script:Config.VpnServer
         Show-Summary
@@ -620,7 +630,7 @@ function Run-Diagnostics {
     Add-Section 'Диагностика'
     Add-Result INFO 'Start' 'Диагностика VPN по серверу подключения, а не по имени профиля' $Script:Config.VpnServer
 
-    $profiles = As-Array (Find-CorpVpnProfiles)
+    $profiles = @(Find-CorpVpnProfiles)
     if ($profiles.Count -eq 0) {
         Add-Result FAIL 'VPN profile' 'VPN профиль для корпоративного сервера не найден' "Искал PhoneNumber=$($Script:Config.VpnServer) в $($Script:AllUserPbk) и $($Script:UserPbk)"
     } elseif ($profiles.Count -gt 1) {
@@ -682,7 +692,7 @@ function Get-RasdialErrorHint {
 
 function Test-VpnConnectionRasdial {
     Clear-Results
-    $profiles = As-Array (Find-CorpVpnProfiles)
+    $profiles = @(Find-CorpVpnProfiles)
     if ($profiles.Count -eq 0) {
         Add-Result FAIL 'rasdial' 'Не найден VPN профиль для теста подключения' $Script:Config.VpnServer
         Show-Summary

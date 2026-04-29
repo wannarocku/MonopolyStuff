@@ -1,6 +1,6 @@
 #requires -Version 5.1
 <#
-Monopoly IKEv2 VPN Tool v1.5
+Monopoly IKEv2 VPN Tool v1.6
 Install / Remove / Diagnose Windows built-in IKEv2 EAP VPN profile.
 
 Run from GitHub:
@@ -490,26 +490,6 @@ function Test-PbkValue {
     }
 }
 
-function Test-LoginBestEffort {
-    param([string]$ProfileName, [bool]$AllUser)
-    try {
-        $vpn = $null
-        if ($AllUser) { $vpn = Get-VpnConnection -Name $ProfileName -AllUserConnection -ErrorAction SilentlyContinue }
-        if (-not $vpn) { $vpn = Get-VpnConnection -Name $ProfileName -ErrorAction SilentlyContinue }
-        $userName = $null
-        if ($vpn -and ($vpn.PSObject.Properties.Name -contains 'UserName')) { $userName = [string]$vpn.UserName }
-        if ([string]::IsNullOrWhiteSpace($userName)) {
-            Add-Result WARN 'Login' 'Сохранённый логин не удалось определить автоматически' 'Это нормально: Windows часто хранит VPN credentials в Credential Manager, а не в rasphone.pbk. При подключении используйте формат user@monopoly.su.'
-        } elseif ($userName -like "*$($Script:Config.LoginSuffix)") {
-            Add-Result OK 'Login' "Логин похож на корректный: $userName" ''
-        } else {
-            Add-Result WARN 'Login' "Логин не похож на user$($Script:Config.LoginSuffix): $userName" 'Проверка продолжается.'
-        }
-    } catch {
-        Add-Result WARN 'Login' 'Не удалось проверить логин' $_.Exception.Message
-    }
-}
-
 function Test-DnsAndNetwork {
     $server = $Script:Config.VpnServer
     try {
@@ -656,7 +636,7 @@ function Run-Diagnostics {
             Test-PbkValue $s 'UseRasCredentials' '1' 'WARN'
             Test-PbkValue $s 'IpNameAssign' '1' 'WARN'
             Test-PbkValue $s 'Ipv6NameAssign' '1' 'WARN'
-            Test-LoginBestEffort -ProfileName $profile.Name -AllUser:($profile.PbkPath -ieq $Script:AllUserPbk)
+            Add-Result INFO 'Login' 'Логин не проверяется автоматически' 'При первом подключении пользователь должен ввести логин в формате user@monopoly.su. Windows хранит credentials отдельно от rasphone.pbk.'
         }
     }
 

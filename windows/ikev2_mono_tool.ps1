@@ -1,6 +1,6 @@
 #requires -Version 5.1
 <#
-Monopoly IKEv2 VPN Tool v1.3
+Monopoly IKEv2 VPN Tool v1.4
 Install / Remove / Diagnose Windows built-in IKEv2 EAP VPN profile.
 
 Run from GitHub:
@@ -652,7 +652,9 @@ function Run-Diagnostics {
             Test-PbkValue $s 'IpDnsSuffix' $Script:Config.DnsSuffix
             Test-PbkValue $s 'IpPrioritizeRemote' '0'
             Test-PbkValue $s 'PreferredDevice' 'WAN Miniport (IKEv2)'
-            Test-PbkValue $s 'Device' 'WAN Miniport (IKEv2)'
+            Test-PbkValue $s 'PreferredPort' 'VPN2-0'
+            Test-PbkValue $s 'Port' 'VPN2-0'
+            Test-PbkValue $s 'Device' 'vpn'
             Test-PbkValue $s 'CacheCredentials' '1' 'WARN'
             Test-PbkValue $s 'UseRasCredentials' '1' 'WARN'
             Test-PbkValue $s 'IpNameAssign' '1' 'WARN'

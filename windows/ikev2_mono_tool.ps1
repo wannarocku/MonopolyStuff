@@ -808,8 +808,7 @@ function Run-Diagnostics {
             Write-Host 'Передайте файл Monopoly_VPN_Diagnostic.txt в техническую поддержку.' -ForegroundColor Yellow
         } else {
             Write-Host ''
-            Write-Host 'Отчёт не создан: критичных ошибок FAIL не обнаружено.' -ForegroundColor Green
-            Write-Host 'Если VPN всё равно не подключается, сделайте скриншот ошибки подключения Windows.' -ForegroundColor Green
+            Write-Host 'Отчёт не создан: ошибок не обнаружено.' -ForegroundColor Green
         }
     }
 }

@@ -1,6 +1,6 @@
 #requires -Version 5.1
 <#
-Monopoly IKEv2 VPN Tool v1.9
+Monopoly IKEv2 VPN Tool v2.0
 Install / Remove / Diagnose Windows built-in IKEv2 EAP VPN profile.
 
 Run from GitHub:
@@ -43,6 +43,7 @@ $Script:UserPbk    = Join-Path $env:APPDATA     'Microsoft\Network\Connections\P
 $Script:Results = New-Object System.Collections.Generic.List[object]
 $Script:FixQueue = New-Object System.Collections.Generic.List[object]
 $Script:AutoFixApplied = $false
+$Script:CaFixNeeded = $false
 $Script:LastReportPath = $null
 
 # =========================
@@ -80,7 +81,7 @@ function Add-Result {
     if ($Details) { Write-Host ("      {0}" -f $Details) -ForegroundColor DarkGray }
 }
 
-function Clear-Results { $Script:Results.Clear(); $Script:FixQueue.Clear(); $Script:AutoFixApplied = $false }
+function Clear-Results { $Script:Results.Clear(); $Script:FixQueue.Clear(); $Script:AutoFixApplied = $false; $Script:CaFixNeeded = $false }
 
 function As-Array {
     param($Value)
@@ -99,7 +100,7 @@ function Show-Summary {
     $warn = @($Script:Results | Where-Object Status -eq 'WARN').Count
 
     if ($Script:AutoFixApplied) {
-        Add-Result WARN 'Summary' 'Найдены проблемы конфигурации, автоисправление выполнено' 'Старые FAIL относятся к состоянию до исправления. Запустите диагностику ещё раз для подтверждения результата.'
+        Add-Result WARN 'Summary' 'Найдены проблемы, автоисправление выполнено' 'Старые FAIL относятся к состоянию до исправления. Запустите диагностику ещё раз для подтверждения результата.'
         return
     }
 
@@ -116,11 +117,10 @@ function Export-Report {
     param([string]$Prefix = 'VPN_IKEv2_Diagnostic')
     $desktop = [Environment]::GetFolderPath('Desktop')
     if (-not $desktop) { $desktop = $PWD.Path }
-    $path = Join-Path $desktop "Monopoly_VPN_Diagnostic.txt"
+    $path = Join-Path $desktop ("{0}_{1}.txt" -f $Prefix, (Get-Date -Format 'yyyyMMdd_HHmmss'))
 
     $lines = New-Object System.Collections.Generic.List[string]
     $lines.Add('Monopoly IKEv2 VPN diagnostic report') | Out-Null
-    $lines.Add('⚠️ ВАЖНО: это последний отчёт диагностики. Файл перезаписывается при каждом запуске.') | Out-Null
     $lines.Add(('Generated: {0}' -f (Get-Date))) | Out-Null
     $lines.Add(('Computer: {0}' -f $env:COMPUTERNAME)) | Out-Null
     $lines.Add(('User: {0}\{1}' -f $env:USERDOMAIN,$env:USERNAME)) | Out-Null
@@ -330,6 +330,7 @@ function Test-CaCertificate {
         if ($existing) {
             Add-Result OK 'CA certificate' 'Нужный CA найден в LocalMachine\Root' ("Subject: $($cert.Subject); Thumbprint: $thumb")
         } else {
+            $Script:CaFixNeeded = $true
             Add-Result FAIL 'CA certificate' 'Нужный CA не найден в LocalMachine\Root' ("Subject: $($cert.Subject); Thumbprint expected: $thumb")
         }
     } catch {
@@ -583,25 +584,49 @@ function Repair-PbkProfile {
 }
 
 function Invoke-AutoFixIfNeeded {
-    if ($Script:FixQueue.Count -eq 0) { return }
+    $hasPbkFixes = ($Script:FixQueue.Count -gt 0)
+    $hasCaFix = [bool]$Script:CaFixNeeded
+
+    if (-not $hasPbkFixes -and -not $hasCaFix) { return }
 
     Add-Section 'Автоисправление'
-    Write-Host 'Обнаружены исправимые несоответствия в VPN-профиле:' -ForegroundColor Yellow
-    $Script:FixQueue | ForEach-Object {
-        Write-Host (" - {0}: сейчас '{1}', нужно '{2}'" -f $_.Key,$_.Actual,$_.Expected) -ForegroundColor Yellow
+
+    if ($hasPbkFixes) {
+        Write-Host 'Обнаружены исправимые несоответствия в VPN-профиле:' -ForegroundColor Yellow
+        $Script:FixQueue | ForEach-Object {
+            Write-Host (" - {0}: сейчас '{1}', нужно '{2}'" -f $_.Key,$_.Actual,$_.Expected) -ForegroundColor Yellow
+        }
+        Write-Host ''
     }
 
-    $answer = Read-Host 'Попробовать автоматически исправить VPN-профиль? [Y/N]'
+    if ($hasCaFix) {
+        Write-Host 'Обнаружена исправимая проблема с CA-сертификатом:' -ForegroundColor Yellow
+        Write-Host ' - нужный CA отсутствует в LocalMachine\Root' -ForegroundColor Yellow
+        Write-Host ''
+    }
+
+    $answer = Read-Host 'Попробовать автоматически исправить найденные проблемы? [Y/N]'
     if ($answer -notmatch '^(Y|y|Д|д)$') {
         Add-Result WARN 'Auto-fix' 'Автоисправление пропущено пользователем' ''
         return
     }
 
-    $groups = $Script:FixQueue | Group-Object PbkPath, ProfileName
-    foreach ($g in $groups) {
-        $first = $g.Group | Select-Object -First 1
-        $repairOk = Repair-PbkProfile -Path $first.PbkPath -SectionName $first.ProfileName -Fixes $g.Group
-        if ($repairOk) { $Script:AutoFixApplied = $true }
+    if ($hasCaFix) {
+        if (-not (Test-IsAdmin)) {
+            Add-Result FAIL 'Auto-fix CA' 'Для установки CA нужен запуск PowerShell от администратора' ''
+        } else {
+            $caOk = Install-CaCertificate
+            if ($caOk) { $Script:AutoFixApplied = $true }
+        }
+    }
+
+    if ($hasPbkFixes) {
+        $groups = $Script:FixQueue | Group-Object PbkPath, ProfileName
+        foreach ($g in $groups) {
+            $first = $g.Group | Select-Object -First 1
+            $repairOk = Repair-PbkProfile -Path $first.PbkPath -SectionName $first.ProfileName -Fixes $g.Group
+            if ($repairOk) { $Script:AutoFixApplied = $true }
+        }
     }
 
     Write-Host ''

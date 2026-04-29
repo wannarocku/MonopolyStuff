@@ -1,6 +1,6 @@
 #requires -Version 5.1
 <#
-Monopoly IKEv2 VPN Tool v2.5
+Monopoly IKEv2 VPN Tool v2.6
 Install / Remove / Diagnose Windows built-in IKEv2 EAP VPN profile.
 
 Run from GitHub:
@@ -703,8 +703,11 @@ function Test-ServiceStatusSmart {
 
     try {
         $s = Get-Service -Name $Name -ErrorAction Stop
+        $displayName = $s.DisplayName
+        $details = "ServiceName: $Name; DisplayName: $displayName"
+
         if ($s.Status -eq 'Running') {
-            Add-Result OK $Display "Служба запущена ($($s.Status))" ''
+            Add-Result OK $Display "Служба запущена ($($s.Status))" $details
             return $true
         }
 
@@ -713,7 +716,8 @@ function Test-ServiceStatusSmart {
             Start-Sleep -Milliseconds 700
             $s2 = Get-Service -Name $Name -ErrorAction Stop
             if ($s2.Status -eq 'Running') {
-                Add-Result OK $Display "Служба была остановлена, но успешно запущена ($($s2.Status))" 'Скрипт автоматически запустил службу.'
+                $displayName2 = $s2.DisplayName
+                Add-Result OK $Display "Служба была остановлена, но успешно запущена ($($s2.Status))" "ServiceName: $Name; DisplayName: $displayName2. Скрипт автоматически запустил службу."
                 return $true
             }
         } catch {
@@ -721,26 +725,26 @@ function Test-ServiceStatusSmart {
         }
 
         if ($Importance -eq 'Recommended') {
-            Add-Result WARN $Display "Служба не запущена ($($s.Status)); автоматический запуск не удался" "VPN IKEv2 часто может работать при запущенной IKEEXT, но рекомендуется включить PolicyAgent. Ошибка: $startError"
+            Add-Result WARN $Display "Служба не запущена ($($s.Status)); автоматический запуск не удался" "ServiceName: $Name; DisplayName: $displayName. VPN IKEv2 часто может работать при запущенной IKEEXT, но рекомендуется включить PolicyAgent. Ошибка: $startError"
             return $false
         } else {
-            Add-Result FAIL $Display "Служба не запущена ($($s.Status)); автоматический запуск не удался" $startError
+            Add-Result FAIL $Display "Служба не запущена ($($s.Status)); автоматический запуск не удался" "ServiceName: $Name; DisplayName: $displayName. Ошибка: $startError"
             return $false
         }
     } catch {
         if ($Importance -eq 'Recommended') {
-            Add-Result WARN $Display 'Служба не найдена или недоступна' "VPN IKEv2 может работать при запущенной IKEEXT, но рекомендуется проверить службу. Ошибка: $($_.Exception.Message)"
+            Add-Result WARN $Display 'Служба не найдена или недоступна' "ServiceName: $Name. Ищите в services.msc по системному имени или похожему отображаемому имени. VPN IKEv2 может работать при запущенной IKEEXT, но рекомендуется проверить службу. Ошибка: $($_.Exception.Message)"
             return $false
         } else {
-            Add-Result FAIL $Display 'Служба не найдена или недоступна' $_.Exception.Message
+            Add-Result FAIL $Display 'Служба не найдена или недоступна' "ServiceName: $Name. Ошибка: $($_.Exception.Message)"
             return $false
         }
     }
 }
 
 function Test-Services {
-    $ikeOk = Test-ServiceStatusSmart -Name 'IKEEXT' -Display 'IKE and AuthIP IPsec Keying Modules' -Importance Required
-    [void](Test-ServiceStatusSmart -Name 'PolicyAgent' -Display 'IPsec Policy Agent' -Importance Recommended)
+    $ikeOk = Test-ServiceStatusSmart -Name 'IKEEXT' -Display 'IKEEXT service' -Importance Required
+    [void](Test-ServiceStatusSmart -Name 'PolicyAgent' -Display 'PolicyAgent service' -Importance Recommended)
 
     if (-not $ikeOk) {
         Add-Result FAIL 'IKEv2 requirement' 'Ключевая служба IKEEXT не работает' 'Без IKEEXT встроенный Windows IKEv2 VPN работать не будет.'

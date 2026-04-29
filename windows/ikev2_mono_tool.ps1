@@ -1,6 +1,6 @@
 #requires -Version 5.1
 <#
-Monopoly IKEv2 VPN Tool v1.6
+Monopoly IKEv2 VPN Tool v1.7
 Install / Remove / Diagnose Windows built-in IKEv2 EAP VPN profile.
 
 Run from GitHub:
@@ -339,7 +339,6 @@ function Install-CorpVpn {
     if (-not (Test-IsAdmin)) {
         Add-Result FAIL 'Admin rights' 'Установку нужно запускать из PowerShell от администратора' 'Для irm | iex откройте PowerShell as Administrator и повторите команду.'
         Show-Summary
-        Export-Report -Prefix 'VPN_IKEv2_Install'
         return
     }
 
@@ -359,13 +358,11 @@ function Install-CorpVpn {
         } elseif ($existingChoice -eq '2') {
             Add-Result INFO 'Install' 'Установка пропущена: профиль уже существует, выполняю диагностику' ''
             Run-Diagnostics -NoClear -NoExport
-            Export-Report -Prefix 'VPN_IKEv2_Install'
-            return
+                return
         } else {
             Add-Result WARN 'Install' 'Установка отменена пользователем' ''
             Show-Summary
-            Export-Report -Prefix 'VPN_IKEv2_Install'
-            return
+                return
         }
     }
 
@@ -386,7 +383,6 @@ function Install-CorpVpn {
     } catch {
         Add-Result FAIL 'Add-VpnConnection' 'Не удалось создать VPN профиль' $_.Exception.Message
         Show-Summary
-        Export-Report -Prefix 'VPN_IKEv2_Install'
         return
     }
 
@@ -412,7 +408,6 @@ function Install-CorpVpn {
     Write-Host ''
 
     Add-Result WARN 'Reboot required' 'После установки VPN рекомендуется перезагрузить ПК' 'Это помогает Windows корректно применить VPN/EAP/IPsec настройки и службы.'
-    Export-Report -Prefix 'VPN_IKEv2_Install'
 }
 
 function Remove-CorpVpnProfileObject {

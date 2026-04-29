@@ -1,6 +1,6 @@
 #requires -Version 5.1
 <#
-Monopoly IKEv2 VPN Tool v2.4
+Monopoly IKEv2 VPN Tool v2.5
 Install / Remove / Diagnose Windows built-in IKEv2 EAP VPN profile.
 
 Run from GitHub:
@@ -359,7 +359,7 @@ function Install-CorpVpn {
     Add-Result INFO 'Install' 'Начинаю установку VPN' ("Name=$($Script:Config.VpnName); Server=$($Script:Config.VpnServer)")
 
     if (-not (Test-IsAdmin)) {
-        Add-Result FAIL 'Admin rights' 'Запустите PowerShell от администратора!' 'AllUserConnection профиль находится в ProgramData.'
+        Add-Result FAIL 'Admin rights' 'Установку нужно запускать из PowerShell от администратора' 'Для irm | iex откройте PowerShell as Administrator и повторите команду.'
         Show-Summary
         return
     }
@@ -462,7 +462,7 @@ function Remove-CorpVpn {
     Clear-Results
     Add-Result INFO 'Remove' 'Ищу VPN профили по серверу, а не по имени' $Script:Config.VpnServer
     if (-not (Test-IsAdmin)) {
-        Add-Result FAIL 'Admin rights' 'Запустите PowerShell от администратора!' 'AllUserConnection профиль находится в ProgramData.'
+        Add-Result FAIL 'Admin rights' 'Удаление лучше запускать из PowerShell от администратора' 'AllUserConnection профиль находится в ProgramData.'
         Show-Summary
         return
     }
@@ -694,33 +694,58 @@ function Test-DnsAndNetwork {
     }
 }
 
-function Test-Services {
-    $services = @(
-        @{ Name='PolicyAgent'; Display='IPsec Policy Agent' },
-        @{ Name='IKEEXT'; Display='IKE and AuthIP IPsec Keying Modules' }
+function Test-ServiceStatusSmart {
+    param(
+        [Parameter(Mandatory)][string]$Name,
+        [Parameter(Mandatory)][string]$Display,
+        [ValidateSet('Required','Recommended')][string]$Importance = 'Required'
     )
-    foreach ($svc in $services) {
+
+    try {
+        $s = Get-Service -Name $Name -ErrorAction Stop
+        if ($s.Status -eq 'Running') {
+            Add-Result OK $Display "Служба запущена ($($s.Status))" ''
+            return $true
+        }
+
         try {
-            $s = Get-Service -Name $svc.Name -ErrorAction Stop
-            if ($s.Status -eq 'Running') {
-                Add-Result OK $svc.Display "Служба запущена ($($s.Status))" ''
-            } else {
-                try {
-                    Start-Service -Name $svc.Name -ErrorAction Stop
-                    Start-Sleep -Milliseconds 700
-                    $s2 = Get-Service -Name $svc.Name -ErrorAction Stop
-                    if ($s2.Status -eq 'Running') {
-                        Add-Result OK $svc.Display "Служба была остановлена, но успешно запущена ($($s2.Status))" 'Скрипт автоматически запустил службу.'
-                    } else {
-                        Add-Result FAIL $svc.Display "Служба не запущена ($($s2.Status))" 'Для IKEv2/IPsec эта служба нужна.'
-                    }
-                } catch {
-                    Add-Result FAIL $svc.Display "Служба не запущена ($($s.Status)); автоматический запуск не удался" $_.Exception.Message
-                }
+            Start-Service -Name $Name -ErrorAction Stop
+            Start-Sleep -Milliseconds 700
+            $s2 = Get-Service -Name $Name -ErrorAction Stop
+            if ($s2.Status -eq 'Running') {
+                Add-Result OK $Display "Служба была остановлена, но успешно запущена ($($s2.Status))" 'Скрипт автоматически запустил службу.'
+                return $true
             }
         } catch {
-            Add-Result FAIL $svc.Display 'Служба не найдена или недоступна' $_.Exception.Message
+            $startError = $_.Exception.Message
         }
+
+        if ($Importance -eq 'Recommended') {
+            Add-Result WARN $Display "Служба не запущена ($($s.Status)); автоматический запуск не удался" "VPN IKEv2 часто может работать при запущенной IKEEXT, но рекомендуется включить PolicyAgent. Ошибка: $startError"
+            return $false
+        } else {
+            Add-Result FAIL $Display "Служба не запущена ($($s.Status)); автоматический запуск не удался" $startError
+            return $false
+        }
+    } catch {
+        if ($Importance -eq 'Recommended') {
+            Add-Result WARN $Display 'Служба не найдена или недоступна' "VPN IKEv2 может работать при запущенной IKEEXT, но рекомендуется проверить службу. Ошибка: $($_.Exception.Message)"
+            return $false
+        } else {
+            Add-Result FAIL $Display 'Служба не найдена или недоступна' $_.Exception.Message
+            return $false
+        }
+    }
+}
+
+function Test-Services {
+    $ikeOk = Test-ServiceStatusSmart -Name 'IKEEXT' -Display 'IKE and AuthIP IPsec Keying Modules' -Importance Required
+    [void](Test-ServiceStatusSmart -Name 'PolicyAgent' -Display 'IPsec Policy Agent' -Importance Recommended)
+
+    if (-not $ikeOk) {
+        Add-Result FAIL 'IKEv2 requirement' 'Ключевая служба IKEEXT не работает' 'Без IKEEXT встроенный Windows IKEv2 VPN работать не будет.'
+    } else {
+        Add-Result INFO 'IKEv2 requirement' 'Ключевая служба IKEEXT работает' 'PolicyAgent желательно держать включённым, но его остановка не всегда блокирует IKEv2 подключение.'
     }
 }
 
@@ -842,7 +867,7 @@ function Show-Header {
     Write-Host '=============================================' -ForegroundColor Cyan
     Write-Host ("Server : {0}" -f $Script:Config.VpnServer)
     Write-Host ("Default profile name : {0}" -f $Script:Config.VpnName)
-    #Write-Host ("CA URL : {0}" -f $Script:Config.CaCertUrl)
+    Write-Host ("CA URL : {0}" -f $Script:Config.CaCertUrl)
     Write-Host ("Admin : {0}" -f ($(if (Test-IsAdmin) {'YES'} else {'NO'})))
     Write-Host ''
 }

@@ -1,6 +1,6 @@
 #requires -Version 5.1
 <#
-Monopoly IKEv2 VPN Tool v2.2
+Monopoly IKEv2 VPN Tool v2.3
 Install / Remove / Diagnose Windows built-in IKEv2 EAP VPN profile.
 
 Run from GitHub:
@@ -833,7 +833,6 @@ function Show-Menu {
         Write-Host '1. Установить VPN'
         Write-Host '2. Удалить VPN'
         Write-Host '3. Диагностика'
-        Write-Host '4. Открыть папку с диагностическим отчётом'
         Write-Host '0. Выход'
         Write-Host ''
         $choice = Read-Host 'Выберите пункт'
@@ -841,14 +840,6 @@ function Show-Menu {
             '1' { Install-CorpVpn; Pause-Menu }
             '2' { Remove-CorpVpn; Pause-Menu }
             '3' { Run-Diagnostics; Pause-Menu }
-            '4' {
-                if ($Script:LastReportPath -and (Test-Path $Script:LastReportPath)) {
-                    Start-Process explorer.exe -ArgumentList ('/select,"{0}"' -f $Script:LastReportPath)
-                } else {
-                    Write-Host 'Диагностический отчёт пока не создан. Он создаётся только при наличии FAIL.' -ForegroundColor Yellow
-                    Pause-Menu
-                }
-            }
             '0' { return }
             default { Write-Host 'Неверный пункт меню.' -ForegroundColor Yellow; Start-Sleep -Seconds 1 }
         }

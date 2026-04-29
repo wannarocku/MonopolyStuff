@@ -116,10 +116,11 @@ function Export-Report {
     param([string]$Prefix = 'VPN_IKEv2_Diagnostic')
     $desktop = [Environment]::GetFolderPath('Desktop')
     if (-not $desktop) { $desktop = $PWD.Path }
-    $path = Join-Path $desktop ("{0}_{1}.txt" -f $Prefix, (Get-Date -Format 'yyyyMMdd_HHmmss'))
+    $path = Join-Path $desktop "Monopoly_VPN_Diagnostic.txt"
 
     $lines = New-Object System.Collections.Generic.List[string]
     $lines.Add('Monopoly IKEv2 VPN diagnostic report') | Out-Null
+    $lines.Add('⚠️ ВАЖНО: это последний отчёт диагностики. Файл перезаписывается при каждом запуске.') | Out-Null
     $lines.Add(('Generated: {0}' -f (Get-Date))) | Out-Null
     $lines.Add(('Computer: {0}' -f $env:COMPUTERNAME)) | Out-Null
     $lines.Add(('User: {0}\{1}' -f $env:USERDOMAIN,$env:USERNAME)) | Out-Null

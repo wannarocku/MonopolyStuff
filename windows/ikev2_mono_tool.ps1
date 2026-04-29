@@ -805,7 +805,6 @@ function Run-Diagnostics {
             Export-Report -Prefix 'VPN_IKEv2_Diagnostic'
             Write-Host ''
             Write-Host 'Диагностический отчёт создан на рабочем столе текущего пользователя.' -ForegroundColor Yellow
-            Write-Host 'Передайте файл Monopoly_VPN_Diagnostic.txt в техническую поддержку.' -ForegroundColor Yellow
         } else {
             Write-Host ''
             Write-Host 'Отчёт не создан: ошибок не обнаружено.' -ForegroundColor Green

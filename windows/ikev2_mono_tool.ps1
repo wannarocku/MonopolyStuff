@@ -1,6 +1,6 @@
 #requires -Version 5.1
 <#
-Monopoly IKEv2 VPN Tool v2.3
+Monopoly IKEv2 VPN Tool v2.4
 Install / Remove / Diagnose Windows built-in IKEv2 EAP VPN profile.
 
 Run from GitHub:
@@ -43,6 +43,7 @@ $Script:UserPbk    = Join-Path $env:APPDATA     'Microsoft\Network\Connections\P
 $Script:Results = New-Object System.Collections.Generic.List[object]
 $Script:FixQueue = New-Object System.Collections.Generic.List[object]
 $Script:AutoFixApplied = $false
+$Script:AutoFixFailed = $false
 $Script:CaFixNeeded = $false
 $Script:LastReportPath = $null
 
@@ -81,7 +82,7 @@ function Add-Result {
     if ($Details) { Write-Host ("      {0}" -f $Details) -ForegroundColor DarkGray }
 }
 
-function Clear-Results { $Script:Results.Clear(); $Script:FixQueue.Clear(); $Script:AutoFixApplied = $false; $Script:CaFixNeeded = $false }
+function Clear-Results { $Script:Results.Clear(); $Script:FixQueue.Clear(); $Script:AutoFixApplied = $false; $Script:AutoFixFailed = $false; $Script:CaFixNeeded = $false }
 
 function As-Array {
     param($Value)
@@ -99,8 +100,18 @@ function Show-Summary {
     $fail = @($Script:Results | Where-Object Status -eq 'FAIL').Count
     $warn = @($Script:Results | Where-Object Status -eq 'WARN').Count
 
-    if ($Script:AutoFixApplied) {
+    if ($Script:AutoFixApplied -and -not $Script:AutoFixFailed) {
         Add-Result WARN 'Summary' 'Найдены проблемы, автоисправление выполнено' 'Запустите диагностику ещё раз для подтверждения результата.'
+        return
+    }
+
+    if ($Script:AutoFixApplied -and $Script:AutoFixFailed) {
+        Add-Result FAIL 'Summary' 'Автоисправление выполнено частично' 'Часть проблем не исправлена. Обычно причина — PowerShell запущен не от имени администратора. Запустите PowerShell as Administrator и повторите диагностику.'
+        return
+    }
+
+    if ($Script:AutoFixFailed) {
+        Add-Result FAIL 'Summary' 'Автоисправление не выполнено' 'Запустите PowerShell от имени администратора и повторите диагностику.'
         return
     }
 
@@ -615,9 +626,10 @@ function Invoke-AutoFixIfNeeded {
     if ($hasCaFix) {
         if (-not (Test-IsAdmin)) {
             Add-Result FAIL 'Auto-fix CA' 'Для установки CA нужен запуск PowerShell от администратора' ''
+            $Script:AutoFixFailed = $true
         } else {
             $caOk = Install-CaCertificate
-            if ($caOk) { $Script:AutoFixApplied = $true }
+            if ($caOk) { $Script:AutoFixApplied = $true } else { $Script:AutoFixFailed = $true }
         }
     }
 
@@ -626,12 +638,20 @@ function Invoke-AutoFixIfNeeded {
         foreach ($g in $groups) {
             $first = $g.Group | Select-Object -First 1
             $repairOk = Repair-PbkProfile -Path $first.PbkPath -SectionName $first.ProfileName -Fixes $g.Group
-            if ($repairOk) { $Script:AutoFixApplied = $true }
+            if ($repairOk) { $Script:AutoFixApplied = $true } else { $Script:AutoFixFailed = $true }
         }
     }
 
     Write-Host ''
-    Write-Host 'Автоисправление выполнено. Запустите диагностику ещё раз для подтверждения результата.' -ForegroundColor Yellow
+    if ($Script:AutoFixApplied -and -not $Script:AutoFixFailed) {
+        Write-Host 'Автоисправление выполнено. Запустите диагностику ещё раз для подтверждения результата.' -ForegroundColor Yellow
+    } elseif ($Script:AutoFixApplied -and $Script:AutoFixFailed) {
+        Write-Host 'Автоисправление выполнено частично. Часть проблем осталась.' -ForegroundColor Red
+        Write-Host 'Запустите PowerShell от имени администратора и повторите диагностику.' -ForegroundColor Red
+    } else {
+        Write-Host 'Автоисправление не выполнено.' -ForegroundColor Red
+        Write-Host 'Запустите PowerShell от имени администратора и повторите диагностику.' -ForegroundColor Red
+    }
     Write-Host 'Если VPN был открыт в настройках Windows, закройте окно настроек и откройте заново.' -ForegroundColor Yellow
 }
 

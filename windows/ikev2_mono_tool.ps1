@@ -842,7 +842,7 @@ function Show-Header {
     Write-Host '=============================================' -ForegroundColor Cyan
     Write-Host ("Server : {0}" -f $Script:Config.VpnServer)
     Write-Host ("Default profile name : {0}" -f $Script:Config.VpnName)
-    Write-Host ("CA URL : {0}" -f $Script:Config.CaCertUrl)
+    #Write-Host ("CA URL : {0}" -f $Script:Config.CaCertUrl)
     Write-Host ("Admin : {0}" -f ($(if (Test-IsAdmin) {'YES'} else {'NO'})))
     Write-Host ''
 }

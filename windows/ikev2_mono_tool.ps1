@@ -1,6 +1,6 @@
 #requires -Version 5.1
 <#
-Monopoly IKEv2 VPN Tool v1.8
+Monopoly IKEv2 VPN Tool v1.9
 Install / Remove / Diagnose Windows built-in IKEv2 EAP VPN profile.
 
 Run from GitHub:
@@ -42,6 +42,7 @@ $Script:AllUserPbk = Join-Path $env:ProgramData 'Microsoft\Network\Connections\P
 $Script:UserPbk    = Join-Path $env:APPDATA     'Microsoft\Network\Connections\Pbk\rasphone.pbk'
 $Script:Results = New-Object System.Collections.Generic.List[object]
 $Script:FixQueue = New-Object System.Collections.Generic.List[object]
+$Script:AutoFixApplied = $false
 $Script:LastReportPath = $null
 
 # =========================
@@ -79,7 +80,7 @@ function Add-Result {
     if ($Details) { Write-Host ("      {0}" -f $Details) -ForegroundColor DarkGray }
 }
 
-function Clear-Results { $Script:Results.Clear(); $Script:FixQueue.Clear() }
+function Clear-Results { $Script:Results.Clear(); $Script:FixQueue.Clear(); $Script:AutoFixApplied = $false }
 
 function As-Array {
     param($Value)
@@ -96,10 +97,16 @@ function Add-Section {
 function Show-Summary {
     $fail = @($Script:Results | Where-Object Status -eq 'FAIL').Count
     $warn = @($Script:Results | Where-Object Status -eq 'WARN').Count
+
+    if ($Script:AutoFixApplied) {
+        Add-Result WARN 'Summary' 'Найдены проблемы конфигурации, автоисправление выполнено' 'Старые FAIL относятся к состоянию до исправления. Запустите диагностику ещё раз для подтверждения результата.'
+        return
+    }
+
     if ($fail -gt 0) {
         Add-Result FAIL 'Summary' ("Проверка завершена: FAIL={0}, WARN={1}" -f $fail,$warn) 'Сначала устраните FAIL. WARN часто не блокирует подключение.'
     } elseif ($warn -gt 0) {
-        Add-Result WARN 'Summary' ("Критичных проблем не найдено, но есть WARN={0}" -f $warn) 'Проверьте предупреждения, особенно логин и сохранённые credentials.'
+        Add-Result WARN 'Summary' ("Критичных проблем не найдено, но есть WARN={0}" -f $warn) 'Проверьте предупреждения.'
     } else {
         Add-Result OK 'Summary' 'Критичных проблем не найдено' ''
     }
@@ -592,11 +599,12 @@ function Invoke-AutoFixIfNeeded {
     $groups = $Script:FixQueue | Group-Object PbkPath, ProfileName
     foreach ($g in $groups) {
         $first = $g.Group | Select-Object -First 1
-        [void](Repair-PbkProfile -Path $first.PbkPath -SectionName $first.ProfileName -Fixes $g.Group)
+        $repairOk = Repair-PbkProfile -Path $first.PbkPath -SectionName $first.ProfileName -Fixes $g.Group
+        if ($repairOk) { $Script:AutoFixApplied = $true }
     }
 
     Write-Host ''
-    Write-Host 'После исправления рекомендуется выполнить диагностику ещё раз.' -ForegroundColor Yellow
+    Write-Host 'Автоисправление выполнено. Запустите диагностику ещё раз для подтверждения результата.' -ForegroundColor Yellow
     Write-Host 'Если VPN был открыт в настройках Windows, закройте окно настроек и откройте заново.' -ForegroundColor Yellow
 }
 

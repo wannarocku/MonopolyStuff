@@ -359,7 +359,7 @@ function Install-CorpVpn {
     Add-Result INFO 'Install' 'Начинаю установку VPN' ("Name=$($Script:Config.VpnName); Server=$($Script:Config.VpnServer)")
 
     if (-not (Test-IsAdmin)) {
-        Add-Result FAIL 'Admin rights' 'Установку нужно запускать из PowerShell от администратора' 'Для irm | iex откройте PowerShell as Administrator и повторите команду.'
+        Add-Result FAIL 'Admin rights' 'Запустите PowerShell от администратора!' 'AllUserConnection профиль находится в ProgramData.'
         Show-Summary
         return
     }
@@ -462,7 +462,7 @@ function Remove-CorpVpn {
     Clear-Results
     Add-Result INFO 'Remove' 'Ищу VPN профили по серверу, а не по имени' $Script:Config.VpnServer
     if (-not (Test-IsAdmin)) {
-        Add-Result FAIL 'Admin rights' 'Удаление лучше запускать из PowerShell от администратора' 'AllUserConnection профиль находится в ProgramData.'
+        Add-Result FAIL 'Admin rights' 'Запустите PowerShell от администратора!' 'AllUserConnection профиль находится в ProgramData.'
         Show-Summary
         return
     }

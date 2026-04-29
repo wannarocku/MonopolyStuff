@@ -1,6 +1,6 @@
 #requires -Version 5.1
 <#
-Monopoly IKEv2 VPN Tool v2.1
+Monopoly IKEv2 VPN Tool v2.2
 Install / Remove / Diagnose Windows built-in IKEv2 EAP VPN profile.
 
 Run from GitHub:
@@ -137,7 +137,7 @@ function Export-Report {
     }
     $lines | Set-Content -Path $path -Encoding UTF8
     $Script:LastReportPath = $path
-    Write-Host "Report saved: $path" -ForegroundColor Green
+    Write-Host "Отчёт сохранён: $path" -ForegroundColor Green
 }
 
 function Invoke-NativeProcess {
@@ -797,7 +797,21 @@ function Run-Diagnostics {
     Invoke-AutoFixIfNeeded
     Add-Section 'Итог'
     Show-Summary
-    if (-not $NoExport) { Export-Report -Prefix 'VPN_IKEv2_Diagnostic' }
+
+    if (-not $NoExport) {
+        $hasFail = @($Script:Results | Where-Object Status -eq 'FAIL').Count -gt 0
+
+        if ($hasFail) {
+            Export-Report -Prefix 'VPN_IKEv2_Diagnostic'
+            Write-Host ''
+            Write-Host 'Диагностический отчёт создан на рабочем столе текущего пользователя.' -ForegroundColor Yellow
+            Write-Host 'Передайте файл Monopoly_VPN_Diagnostic.txt в техническую поддержку.' -ForegroundColor Yellow
+        } else {
+            Write-Host ''
+            Write-Host 'Отчёт не создан: критичных ошибок FAIL не обнаружено.' -ForegroundColor Green
+            Write-Host 'Если VPN всё равно не подключается, сделайте скриншот ошибки подключения Windows.' -ForegroundColor Green
+        }
+    }
 }
 
 # =========================
@@ -821,7 +835,7 @@ function Show-Menu {
         Write-Host '1. Установить VPN / обновить профиль'
         Write-Host '2. Удалить VPN профили для privet1.monopoly.su'
         Write-Host '3. Диагностика'
-        Write-Host '4. Открыть папку с последним отчётом'
+        Write-Host '4. Открыть папку с диагностическим отчётом'
         Write-Host '0. Выход'
         Write-Host ''
         $choice = Read-Host 'Выберите пункт'
@@ -833,7 +847,7 @@ function Show-Menu {
                 if ($Script:LastReportPath -and (Test-Path $Script:LastReportPath)) {
                     Start-Process explorer.exe -ArgumentList ('/select,"{0}"' -f $Script:LastReportPath)
                 } else {
-                    Write-Host 'Пока нет сохранённого отчёта.' -ForegroundColor Yellow
+                    Write-Host 'Диагностический отчёт пока не создан. Он создаётся только при наличии FAIL.' -ForegroundColor Yellow
                     Pause-Menu
                 }
             }
